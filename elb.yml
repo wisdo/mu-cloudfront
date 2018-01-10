@@ -1,8 +1,8 @@
 Parameters:
-  StaticPrefix:
+  DynamicPrefix:
     Type: String
-    Description: Prefix to use for static resources
-    Default: /static
+    Description: Prefix to use for dynamic resources
+    Default: /api
 Resources:
   SiteBucket:
     Type: AWS::S3::Bucket
@@ -48,19 +48,23 @@ Resources:
             - Ref: AWS::NoValue
         CacheBehaviors:
           - AllowedMethods:
+              - DELETE
               - GET
               - HEAD
               - OPTIONS
+              - PATCH
+              - POST
+              - PUT
             DefaultTTL: 0
             ForwardedValues:
-              QueryString: no
+              QueryString: true
               Cookies:
                 Forward: all
             MaxTTL: 60
             MinTTL: 0
             PathPattern:
-              Fn::Sub: ${StaticPrefix}/*
-            TargetOriginId: s3-bucket
+              Fn::Sub: ${DynamicPrefix}/*
+            TargetOriginId: ecs-alb
             ViewerProtocolPolicy:
               Fn::If:
                 - HasElbCert
@@ -68,21 +72,17 @@ Resources:
                 - allow-all
         DefaultCacheBehavior:
           AllowedMethods:
-            - DELETE
             - GET
             - HEAD
             - OPTIONS
-            - PATCH
-            - POST
-            - PUT
           DefaultTTL: 0
           ForwardedValues:
-            QueryString: true
+            QueryString: no
             Cookies:
               Forward: all
           MaxTTL: 60
           MinTTL: 0
-          TargetOriginId: ecs-alb
+          TargetOriginId: s3-bucket
           ViewerProtocolPolicy:
             Fn::If:
               - HasElbCert
