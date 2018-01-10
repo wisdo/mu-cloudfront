@@ -1,0 +1,19 @@
+Resources:
+  CloudFormationRole:
+    Properties:
+      Policies:
+      - PolicyName: deploy-cloudfront
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - cloudfront:*
+            Resource: '*'
+            Effect: Allow
+          - Action:
+            - s3:GetBucketAcl
+            - s3:PutBucketAcl
+            - s3:PutBucketPolicy
+            - s3:DeleteBucketPolicy
+            Resource: '*'
+            Effect: Allow
