@@ -3,6 +3,16 @@ Parameters:
     Type: String
     Description: Prefix to use for dynamic resources
     Default: /api
+  CloudFrontCert:
+    Type: String
+    Description: The identifier for the certificate to use for CloudFront. Leave blank to disable HTTPS
+    Default: ''
+Conditions:
+  HasCloudFrontCert:
+    "Fn::Not":
+      - "Fn::Equals":
+        - !Ref CloudFrontCert
+        - ''
 Resources:
   SiteBucket:
     Type: AWS::S3::Bucket
@@ -67,7 +77,7 @@ Resources:
             TargetOriginId: ecs-alb
             ViewerProtocolPolicy:
               Fn::If:
-                - HasElbCert
+                - HasCloudFrontCert
                 - redirect-to-https
                 - allow-all
         DefaultCacheBehavior:
@@ -85,7 +95,7 @@ Resources:
           TargetOriginId: s3-bucket
           ViewerProtocolPolicy:
             Fn::If:
-              - HasElbCert
+              - HasCloudFrontCert
               - redirect-to-https
               - allow-all
         DefaultRootObject: index.html
@@ -114,16 +124,24 @@ Resources:
                   - HasElbCert
                   - https-only
                   - http-only
+              OriginSSLProtocols:
+                - 'TLSv1.2'
             DomainName:
-              Fn::Sub: ${Elb.DNSName}
+              Fn::If:
+               - HasElbDomainName
+               - Fn::If:
+                 - HasElbHostName
+                 - Fn::Sub: elb.${ElbHostName}.${ElbDomainName}
+                 - Fn::Sub: elb.${ElbDomainName}
+               - Fn::Sub: ${Elb.DNSName}
         PriceClass: PriceClass_100
         ViewerCertificate:
           Fn::If:
             - HasElbCert
             - AcmCertificateArn:
-                Fn::Sub: "arn:aws:acm:us-east-1:${AWS::AccountId}:certificate/${ElbCert}"
+                Fn::Sub: "arn:aws:acm:us-east-1:${AWS::AccountId}:certificate/${CloudFrontCert}"
               MinimumProtocolVersion: TLSv1.2_2018
-              SSLSupportMethod: sni-only
+              SslSupportMethod: sni-only
             - Ref: AWS::NoValue
   ElbDns:
     Properties:
@@ -144,14 +162,14 @@ Resources:
                   - Fn::Sub: ${ElbHostName}.${ElbDomainName}.
                   - Fn::Sub: ${ElbDomainName}.
             - AliasTarget:
-                HostedZoneId: Z2FDTNDATAQYW2
+                HostedZoneId:
+                  Fn::GetAtt: Elb.CanonicalHostedZoneID
                 DNSName:
-                  Fn::GetAtt: CloudFrontDist.DomainName
-                EvaluateTargetHealth: false
+                  Fn::GetAtt: Elb.DNSName
+                EvaluateTargetHealth: true
               Name:
                 Fn::If:
                   Fn::Replace:
                   - HasElbHostName
                   - Fn::Sub: '*.${ElbHostName}.${ElbDomainName}.'
                   - Fn::Sub: '*.${ElbDomainName}.'
-
