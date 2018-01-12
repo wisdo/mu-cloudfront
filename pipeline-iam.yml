@@ -8,13 +8,14 @@ Resources:
           Statement:
           - Action:
             - s3:PutObject
+            - s3:GetObject
             Resource:
             - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${AcptEnv}-${AWS::Region}-${AWS::AccountId}/*
             Effect: Allow
           - Action:
-            - s3:ListObjects
+            - s3:ListBucket
             Resource:
-            - '*'
+            - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${AcptEnv}-${AWS::Region}-${AWS::AccountId}
             Effect: Allow
   CodeBuildCDProdRole:
     Properties:
@@ -24,8 +25,13 @@ Resources:
           Version: '2012-10-17'
           Statement:
           - Action:
-            - s3:ListObjects
             - s3:PutObject
+            - s3:GetObject
             Resource:
             - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${ProdEnv}-${AWS::Region}-${AWS::AccountId}/*
+            Effect: Allow
+          - Action:
+            - s3:ListBucket
+            Resource:
+            - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${ProdEnv}-${AWS::Region}-${AWS::AccountId}
             Effect: Allow
