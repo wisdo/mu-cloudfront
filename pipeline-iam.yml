@@ -1,0 +1,31 @@
+Resources:
+  CodeBuildCDAcptRole:
+    Properties:
+      Policies:
+      - PolicyName: deploy-site
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - s3:PutObject
+            Resource:
+            - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${AcptEnv}-${AWS::Region}-${AWS::AccountId}/*
+            Effect: Allow
+          - Action:
+            - s3:ListObjects
+            Resource:
+            - '*'
+            Effect: Allow
+  CodeBuildCDProdRole:
+    Properties:
+      Policies:
+      - PolicyName: deploy-site
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - s3:ListObjects
+            - s3:PutObject
+            Resource:
+            - Fn::Sub: arn:aws:s3:::${Namespace}-loadbalancer-${ProdEnv}-${AWS::Region}-${AWS::AccountId}/*
+            Effect: Allow

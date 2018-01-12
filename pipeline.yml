@@ -1,0 +1,120 @@
+Parameters:
+  SourcePath:
+    Type: String
+    Description: Build artifact path to upload to S3
+    Default: ""
+  DestPath:
+    Type: String
+    Description: Build artifact path to upload to S3
+    Default: "/"
+Conditions:
+  HasSourcePath:
+    "Fn::Not":
+      - "Fn::Equals":
+        - ""
+        - Ref: SourcePath
+Resources:
+  DeployAcceptanceSite:
+    Type: AWS::CodeBuild::Project
+    Condition: IsAcptEnabled
+    Properties:
+      Name: 
+        Fn::Sub: ${Namespace}-pipeline-${ServiceName}-deploy-site-acceptance
+      EncryptionKey: 
+        Ref: CodePipelineKeyArn
+      Description: Deploy site to acpt environment
+      ServiceRole: 
+        Ref: CodeBuildCDAcptRoleArn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: 
+          Ref: MuType
+        ComputeType: 
+          Ref: MuComputeType
+        Image:
+          Ref: MuImage
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: 
+          Fn::Sub: |
+            version: 0.2
+            phases:
+              build:
+                commands:
+                  - aws s3 sync ${SourcePath}/ s3://${Namespace}-loadbalancer-${AcptEnv}-${AWS::Region}-${AWS::AccountId}${DestPath}
+  DeployProductionSite:
+    Type: AWS::CodeBuild::Project
+    Condition: IsProdEnabled
+    Properties:
+      Name: 
+        Fn::Sub: ${Namespace}-pipeline-${ServiceName}-deploy-site-production
+      EncryptionKey: 
+        Ref: CodePipelineKeyArn
+      Description: Deploy site to prod environment
+      ServiceRole: 
+        Ref: CodeBuildCDProdRoleArn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: 
+          Ref: MuType
+        ComputeType: 
+          Ref: MuComputeType
+        Image:
+          Ref: MuImage
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: 
+          Fn::Sub: |
+            version: 0.2
+            phases:
+              build:
+                commands:
+                  - aws s3 --delete sync ${SourcePath}/ s3://${Namespace}-loadbalancer-${ProdEnv}-${AWS::Region}-${AWS::AccountId}${DestPath}
+  Pipeline:
+    Properties:
+      Stages:
+        Fn::Splice:
+          - 2 
+          - 2 
+          - - Fn::If:
+                Fn::Splice:
+                  - 1
+                  - 1
+                  - - Actions:
+                      - Fn::If: 
+                        - HasSourcePath
+                        - Name: DeploySite
+                          ActionTypeId:
+                            Category: Test
+                            Owner: AWS
+                            Version: '1'
+                            Provider: CodeBuild
+                          InputArtifacts:
+                          - Name: ArtifactOutput
+                          Configuration:
+                            ProjectName: 
+                              Ref: DeployAcceptanceSite
+                          RunOrder: 15
+                        - Ref: AWS::NoValue
+            - Fn::If:
+                Fn::Splice:
+                  - 1
+                  - 1
+                  - - Actions:
+                      - Fn::If: 
+                        - HasSourcePath
+                        - Name: DeploySite
+                          ActionTypeId:
+                            Category: Test
+                            Owner: AWS
+                            Version: '1'
+                            Provider: CodeBuild
+                          InputArtifacts:
+                          - Name: ArtifactOutput
+                          Configuration:
+                            ProjectName: 
+                              Ref: DeployAcceptanceSite
+                          RunOrder: 15
+                        - Ref: AWS::NoValue
