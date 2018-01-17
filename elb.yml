@@ -56,6 +56,10 @@ Resources:
                - Fn::Sub: ${ElbHostName}.${ElbDomainName}
                - Fn::Sub: ${ElbDomainName}
             - Ref: AWS::NoValue
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
         CacheBehaviors:
           - AllowedMethods:
               - DELETE
