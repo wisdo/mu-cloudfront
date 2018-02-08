@@ -10,7 +10,7 @@ parameters:
     CloudFrontCert: "0000000-0000-0000-0000-000000000"
 
 extensions:
-- url: https://github.com/stelligent/mu-cloudfront/archive/v0.1.zip
+- url: https://github.com/stelligent/mu-cloudfront/archive/v0.3.zip
 ```
 
 
