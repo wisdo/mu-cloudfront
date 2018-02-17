@@ -92,6 +92,7 @@ Resources:
           DefaultTTL: 0
           ForwardedValues:
             QueryString: no
+            Headers: '*'
             Cookies:
               Forward: all
           MaxTTL: 60
