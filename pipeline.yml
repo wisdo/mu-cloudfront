@@ -115,6 +115,6 @@ Resources:
                           - Name: ArtifactOutput
                           Configuration:
                             ProjectName: 
-                              Ref: DeployAcceptanceSite
+                              Ref: DeployProductionSite
                           RunOrder: 15
                         - Ref: AWS::NoValue
