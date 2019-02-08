@@ -74,6 +74,8 @@ Resources:
               QueryString: true
               Cookies:
                 Forward: all
+              Headers: 
+                - '*'
             MaxTTL: 60
             MinTTL: 0
             PathPattern:
@@ -92,8 +94,6 @@ Resources:
           DefaultTTL: 0
           ForwardedValues:
             QueryString: no
-            Headers: 
-              - '*'
             Cookies:
               Forward: all
           MaxTTL: 60
