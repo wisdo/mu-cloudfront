@@ -2,18 +2,67 @@ Resources:
   CloudFormationRole:
     Properties:
       Policies:
-      - PolicyName: deploy-cloudfront
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Action:
-            - cloudfront:*
-            Resource: '*'
-            Effect: Allow
-          - Action:
-            - s3:GetBucketAcl
-            - s3:PutBucketAcl
-            - s3:PutBucketPolicy
-            - s3:DeleteBucketPolicy
-            Resource: '*'
-            Effect: Allow
+        - PolicyName: deploy-cloudfront
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - cloudfront:*
+                Resource: '*'
+                Effect: Allow
+              - Action:
+                  - s3:GetBucketAcl
+                  - s3:PutBucketAcl
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                Resource: '*'
+                Effect: Allow
+        - PolicyName: lambda-and-sns-perms
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - lambda:*
+                  - SNS:*
+                  - iam:PassRole
+                Resource: '*'
+                Effect: Allow
+  CreateAndUpdateSecurityGroupExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:DeleteSecurityGroup
+                  - ec2:CreateSecurityGroup
+                  - ec2:DescribeSecurityGroups
+                  - sns:Subscribe
+                Resource: "*"
+Outputs:
+  CreateAndUpdateSecurityGroupExecutionRoleArn:
+    Value:
+      Fn::GetAtt: CreateAndUpdateSecurityGroupExecutionRole.Arn
+    Export:
+      Name: CreateAndUpdateSecurityGroupExecutionRoleArn

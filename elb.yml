@@ -1,25 +1,24 @@
 Parameters:
-  DynamicPrefix:
-    Type: String
-    Description: Prefix to use for dynamic resources
-    Default: /api
   CloudFrontCert:
     Type: String
     Description: The identifier for the certificate to use for CloudFront. Leave blank to disable HTTPS
     Default: ''
-Conditions:
-  HasCloudFrontCert:
-    "Fn::Not":
-      - "Fn::Equals":
-        - !Ref CloudFrontCert
-        - ''
+  CloudFrontDns:
+    Type: String
+    Description: The full dns path to use for CloudFront.
+    Default: ''
 Resources:
   SiteBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName:
-        Fn::Sub: ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}
-  SampleBucketPolicy:
+        Fn::Sub: ${CloudFrontDns}.${Namespace}
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName:
+        Fn::Sub: ${CloudFrontDns}-logging.${Namespace}
+  SiteBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket:
@@ -33,83 +32,67 @@ Resources:
             Action: s3:GetObject
             Resource:
               Fn::Sub: arn:aws:s3:::${SiteBucket}/*
-  LoggingBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName:
-        Fn::Sub: ${AWS::StackName}-logging-${AWS::Region}-${AWS::AccountId}
   CloudFrontOAI:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
     Properties:
       CloudFrontOriginAccessIdentityConfig:
         Comment:
-          Fn::Sub: ${AWS::StackName}-logging-${AWS::Region}-${AWS::AccountId}
+          Fn::Sub: ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}
   CloudFrontDist:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Aliases:
-          - Fn::If:
-            - HasElbDomainName
-            - Fn::If:
-               - HasElbHostName
-               - Fn::Sub: ${ElbHostName}.${ElbDomainName}
-               - Fn::Sub: ${ElbDomainName}
-            - Ref: AWS::NoValue
+          - Fn::Sub: ${CloudFrontDns}
+          - Fn::Sub: www.${CloudFrontDns}
+          - Fn::Sub: api.${CloudFrontDns}
         CustomErrorResponses:
           - ErrorCode: 403
+            ErrorCachingMinTTL: 0
             ResponseCode: 200
-            ResponsePagePath: /index.html
+            ResponsePagePath: /backoffice/index.html
         CacheBehaviors:
           - AllowedMethods:
-              - DELETE
               - GET
               - HEAD
               - OPTIONS
-              - PATCH
-              - POST
-              - PUT
             DefaultTTL: 0
             ForwardedValues:
-              QueryString: true
+              QueryString: no
               Cookies:
-                Forward: all
-              Headers: 
-                - '*'
-            MaxTTL: 60
+                Forward: none
+            MaxTTL: 31536000
             MinTTL: 0
-            PathPattern:
-              Fn::Sub: ${DynamicPrefix}/*
-            TargetOriginId: ecs-alb
-            ViewerProtocolPolicy:
-              Fn::If:
-                - HasCloudFrontCert
-                - redirect-to-https
-                - allow-all
+            TargetOriginId: s3-bucket
+            ViewerProtocolPolicy: redirect-to-https
+            PathPattern: "/backoffice*"
         DefaultCacheBehavior:
           AllowedMethods:
+            - DELETE
             - GET
             - HEAD
             - OPTIONS
+            - PATCH
+            - POST
+            - PUT
           DefaultTTL: 0
           ForwardedValues:
-            QueryString: no
+            QueryString: true
             Cookies:
               Forward: all
-          MaxTTL: 60
+            Headers:
+              - '*'
+          MaxTTL: 31536000
           MinTTL: 0
-          TargetOriginId: s3-bucket
-          ViewerProtocolPolicy:
-            Fn::If:
-              - HasCloudFrontCert
-              - redirect-to-https
-              - allow-all
+          TargetOriginId: ecs-alb
+          ViewerProtocolPolicy: redirect-to-https
         DefaultRootObject: index.html
         Enabled: true
         Logging:
           Bucket:
             Fn::Sub: ${LoggingBucket.DomainName}
           Prefix: cloudfront
+        HttpVersion: http2
         Origins:
           - Id: s3-bucket
             DomainName:
@@ -120,62 +103,165 @@ Resources:
           - Id: ecs-alb
             CustomOriginConfig:
               HTTPPort: 80
-              HTTPSPort:
-                Fn::If:
-                  - HasElbCert
-                  - 443
-                  - Ref: AWS::NoValue
-              OriginProtocolPolicy:
-                Fn::If:
-                  - HasElbCert
-                  - https-only
-                  - http-only
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
               OriginSSLProtocols:
-                - 'TLSv1.2'
+                - 'TLSv1.1'
             DomainName:
-              Fn::If:
-               - HasElbDomainName
-               - Fn::If:
-                 - HasElbHostName
-                 - Fn::Sub: elb.${ElbHostName}.${ElbDomainName}
-                 - Fn::Sub: elb.${ElbDomainName}
-               - Fn::Sub: ${Elb.DNSName}
-        PriceClass: PriceClass_100
+              Fn::Sub: ${Elb.DNSName}
+        PriceClass: PriceClass_All
         ViewerCertificate:
-          Fn::If:
-            - HasCloudFrontCert
-            - AcmCertificateArn:
-                Fn::Sub: "arn:aws:acm:us-east-1:${AWS::AccountId}:certificate/${CloudFrontCert}"
-              MinimumProtocolVersion: TLSv1.2_2018
-              SslSupportMethod: sni-only
-            - Ref: AWS::NoValue
-  ElbDns:
+          AcmCertificateArn:
+            Fn::Sub: "arn:${AWS::Partition}:acm:${AWS::Region}:${AWS::AccountId}:certificate/${CloudFrontCert}"
+          MinimumProtocolVersion: TLSv1.1_2016
+          SslSupportMethod: sni-only
+  CloudfrontIpsSecurityGroupGlobal:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      Comment: DNS for CloudFrontDistribution
-      RecordSets:
-        Fn::Splice:
-          - 0
-          - 2
-          - - AliasTarget:
-                HostedZoneId: Z2FDTNDATAQYW2
-                DNSName:
-                  Fn::GetAtt: CloudFrontDist.DomainName
-                EvaluateTargetHealth: false
-              Name:
-                Fn::If:
-                  Fn::Replace:
-                  - HasElbHostName
-                  - Fn::Sub: ${ElbHostName}.${ElbDomainName}.
-                  - Fn::Sub: ${ElbDomainName}.
-            - AliasTarget:
-                HostedZoneId:
-                  Fn::GetAtt: Elb.CanonicalHostedZoneID
-                DNSName:
-                  Fn::GetAtt: Elb.DNSName
-                EvaluateTargetHealth: true
-              Name:
-                Fn::If:
-                  Fn::Replace:
-                  - HasElbHostName
-                  - Fn::Sub: '*.${ElbHostName}.${ElbDomainName}.'
-                  - Fn::Sub: '*.${ElbDomainName}.'
+      GroupDescription: Limits traffic only to cloudfront - global
+      GroupName:
+        Fn::Sub: ${Namespace}-loadbalancer-${EnvironmentName}-cloudfront-global
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: ${VpcId}
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${Namespace}-loadbalancer-${EnvironmentName}-cloudfront-global
+  CloudfrontIpsSecurityGroupRegion:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Limits traffic only to cloudfront - region
+      GroupName:
+        Fn::Sub: ${Namespace}-loadbalancer-${EnvironmentName}-cloudfront-region
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: ${VpcId}
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${Namespace}-loadbalancer-${EnvironmentName}-cloudfront-region
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: CreateAndUpdateSecurityGroupFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: arn:aws:sns:us-east-1:806199016981:AmazonIpSpaceChanged
+  AmazonIpSpaceChangedSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      TopicArn: arn:aws:sns:us-east-1:806199016981:AmazonIpSpaceChanged
+      Endpoint:
+        Fn::GetAtt:
+          - CreateAndUpdateSecurityGroupFunction
+          - Arn
+      Protocol: lambda
+  ElbSG:
+    Properties:
+      SecurityGroupIngress:
+        Fn::Replace: []
+  Elb:
+    Properties:
+      SecurityGroups:
+        - Ref: CloudfrontIpsSecurityGroupGlobal
+        - Ref: CloudfrontIpsSecurityGroupRegion
+  CreateAndUpdateSecurityGroupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: ${Namespace}-${EnvironmentName}-CreateAndUpdateSecurityGroupFunction
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Timeout: 300
+      Description: Used to update security groups for to block all access to ELB except CloudFront. DO NOT TOUCH.
+      Role:
+        Fn::ImportValue: CreateAndUpdateSecurityGroupExecutionRoleArn
+      Code:
+        ZipFile:
+          Fn::Sub: |
+            import boto3
+            import hashlib
+            import json
+            from urllib.request import urlopen
+
+            ec2 = boto3.client('ec2')
+
+            def lambda_handler(event, context):
+                print("Received event: " + json.dumps(event, indent=2))
+                message = json.loads(event['Records'][0]['Sns']['Message'])
+
+                ip_ranges = json.loads(urlopen("https://ip-ranges.amazonaws.com/ip-ranges.json").read())
+
+                for type in ["GLOBAL", "REGION"]:
+                    cf_ranges = get_ranges_for_service(ip_ranges, type)
+                    groups = get_security_groups_for_update(type)
+
+                    update_security_group(groups[0], cf_ranges, 443)
+
+            def get_ranges_for_service(ranges, subset):
+                service_ranges = list()
+                for prefix in ranges['prefixes']:
+                    if prefix['service'] == "CLOUDFRONT" and ((subset == prefix['region'] and subset == "GLOBAL") or (subset != 'GLOBAL' and prefix['region'] != 'GLOBAL')):
+                        service_ranges.append(prefix['ip_prefix'])
+
+                return service_ranges
+
+            def update_security_group(group, new_ranges, port):
+                added = 0
+                removed = 0
+
+                if len(group['IpPermissions']) > 0:
+                    for permission in group['IpPermissions']:
+                        if permission['FromPort'] <= port and permission['ToPort'] >= port :
+                            old_prefixes = list()
+                            to_revoke = list()
+                            to_add = list()
+                            for range in permission['IpRanges']:
+                                cidr = range['CidrIp']
+                                old_prefixes.append(cidr)
+                                if new_ranges.count(cidr) == 0:
+                                    to_revoke.append(range)
+                                    print(group['GroupId'] + ": Revoking " + cidr + ":" + str(permission['ToPort']))
+
+                            for range in new_ranges:
+                                if old_prefixes.count(range) == 0:
+                                    to_add.append({ 'CidrIp': range })
+                                    print(group['GroupId'] + ": Adding " + range + ":" + str(permission['ToPort']))
+
+                            removed += revoke_permissions(group, permission, to_revoke)
+                            added += add_permissions(group, permission, to_add)
+                else:
+                    to_add = list()
+                    for range in new_ranges:
+                        to_add.append({ 'CidrIp': range })
+                        print(group['GroupId'] + ": Adding " + range + ":" + str(port))
+                    permission = { 'ToPort': port, 'FromPort': port, 'IpProtocol': 'tcp'}
+                    added += add_permissions(group, permission, to_add)
+
+                print (group['GroupId'] + ": Added " + str(added) + ", Revoked " + str(removed))
+                return (added > 0 or removed > 0)
+
+            def get_perm_params(permission, ip_range):
+                return {
+                    'ToPort': permission['ToPort'],
+                    'FromPort': permission['FromPort'],
+                    'IpRanges': ip_range,
+                    'IpProtocol': permission['IpProtocol']
+                }
+
+            def revoke_permissions(group, permission, to_revoke):
+                if len(to_revoke) > 0:
+                    ec2.revoke_security_group_ingress(GroupId=group['GroupId'], IpPermissions=[get_perm_params(permission, to_revoke)])
+
+                return len(to_revoke)
+
+            def add_permissions(group, permission, to_add):
+                if len(to_add) > 0:
+                    ec2.authorize_security_group_ingress(GroupId=group['GroupId'], IpPermissions=[get_perm_params(permission, to_add)])
+
+                return len(to_add)
+
+            def get_security_groups_for_update(type):
+                return ec2.describe_security_groups(Filters=[{'Values': ['Name'], 'Name': 'tag-key'}, {'Values': ['${Namespace}-loadbalancer-${EnvironmentName}-cloudfront-'+type.lower()], 'Name': 'tag-value'}])['SecurityGroups']
